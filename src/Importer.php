@@ -2,24 +2,25 @@
 namespace Starbug\Importer;
 
 use Exception;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
+use Psr\SimpleCache\CacheInterface;
 use Starbug\Importer\Read\StrategyFactoryInterface;
 use Starbug\Importer\Read\StrategyInterface;
 use Starbug\Importer\Transform\Factory;
 use Starbug\Importer\Write\StrategyFactoryInterface as WriteStrategyFactoryInterface;
 use Starbug\Importer\Write\StrategyInterface as WriteStrategyInterface;
-use Starbug\Log\LoggerFactory;
-use Starbug\State\StateInterface;
 
-class Importer {
-  protected $logger;
+class Importer implements LoggerAwareInterface {
+
+  use LoggerAwareTrait;
+
   public function __construct(
     protected StrategyFactoryInterface $readStrategyFactory,
     protected WriteStrategyFactoryInterface $writeStrategyFactory,
     protected Factory $transformerFactory,
-    protected StateInterface $state,
-    LoggerFactory $loggerFactory
+    protected CacheInterface $cache
   ) {
-    $this->logger = $loggerFactory->create("imports");
   }
   protected function getReadStrategy(Import $import): StrategyInterface {
     $strategy = $this->readStrategyFactory->create(
@@ -50,7 +51,7 @@ class Importer {
       // Handle non-Exception errors.
       set_error_handler(function ($errno, $errstr, $errfile, $errline) use ($writeStrategy) {
         if ($message = $writeStrategy->handleError($errno, $errstr, $errfile, $errline)) {
-          $this->logger->error($message);
+          $this->logger?->error($message);
         }
       }, error_reporting());
 
@@ -59,12 +60,12 @@ class Importer {
       restore_error_handler();
     } catch (Exception $e) {
       if ($message = $writeStrategy->handleException($e)) {
-        $this->logger->error($message, ["trace" => $e->getTrace()]);
+        $this->logger?->error($message, ["trace" => $e->getTrace()]);
       }
       restore_error_handler();
     }
     if ($options["now"]) {
-      $this->state->set("import.sync.".$options["sync"].".lastSyncTime", $options["now"]);
+      $this->cache->set("import.sync.".$options["sync"].".lastSyncTime", $options["now"]);
     }
   }
   protected function getDefaultOptions($options = []) {
@@ -72,7 +73,7 @@ class Importer {
     if (!empty($options["sync"])) {
       $now = date("Y-m-d H:i:s");
       if (empty($options["reset"])) {
-        $lastSyncTime = $this->state->get("import.sync.".$options["sync"].".lastSyncTime", "0000-00-00 00:00:00");
+        $lastSyncTime = $this->cache->get("import.sync.".$options["sync"].".lastSyncTime", "0000-00-00 00:00:00");
         $options["lastSyncTime"] = $lastSyncTime;
       }
     }
