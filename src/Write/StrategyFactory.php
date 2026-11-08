@@ -1,0 +1,17 @@
+<?php
+namespace Starbug\Importer\Write;
+
+use DI\FactoryInterface;
+
+class StrategyFactory implements StrategyFactoryInterface {
+  protected $db;
+  protected $filesystems;
+  public function __construct(
+    protected FactoryInterface $container
+  ) {
+    $this->container = $container;
+  }
+  public function create($strategy, $params = []) : StrategyInterface {
+    return $this->container->make($strategy, $params);
+  }
+}
